@@ -1,34 +1,41 @@
 AS       := nasm
-LD       := ld
-ASFLAGS  := -f elf32 -g -F dwarf -w+all
-LDFLAGS  := -m elf_i386
+CC       := gcc
+ASFLAGS  := -f elf64 -g -F dwarf -w+all
+CFLAGS   := -Wall -Wextra -g -no-pie
+LDFLAGS  := 
 
-TASK     ?= my_prinf
-
+TASK     ?= my_printf
 TARGET   := $(TASK)_bin
 
 SRC_DIR  := ./$(TASK)
 OBJ_DIR  := ./obj/$(TASK)
 
-SOURCES  := $(wildcard $(SRC_DIR)/*.s)
-OBJECTS  := $(patsubst $(SRC_DIR)/%.s, $(OBJ_DIR)/%.o, $(SOURCES))
+AS_SOURCES := $(wildcard $(SRC_DIR)/*.s)
+C_SOURCES  := $(wildcard $(SRC_DIR)/*.c)
 
+OBJECTS    := $(patsubst $(SRC_DIR)/%.s, $(OBJ_DIR)/%.o, $(AS_SOURCES)) \
+              $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(C_SOURCES))
 
-.PHONY: all clean run debug
+.PHONY: all clean run debug disasm
 
 all: $(OBJ_DIR) $(TARGET)
 
 $(TARGET): $(OBJECTS)
-	@if [ -z "$(SOURCES)" ]; then echo "Ошибка: В папке $(SRC_DIR) нет .s файлов!"; exit 1; fi
-	$(LD) $(LDFLAGS) $(OBJECTS) -o $(TARGET)
-	@echo "--- Сборка '$(TASK)' завершена! ---"
+	@if [ -z "$(OBJECTS)" ]; then echo "Error: No files to build!"; exit 1; fi
+	$(CC) $(LDFLAGS) $(OBJECTS) -o $(TARGET)
+	@echo "--- Build '$(TASK)' finished! ---"
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.s
 	$(AS) $(ASFLAGS) $< -o $@
 
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
 $(OBJ_DIR):
 	mkdir -p $(OBJ_DIR)
 
+disasm: all
+	objdump -d -M intel $(TARGET)
 
 clean:
 	rm -rf ./obj $(TARGET)
