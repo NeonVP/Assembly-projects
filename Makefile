@@ -1,6 +1,6 @@
 AS       := nasm
 CC       := gcc
-ASFLAGS  := -f elf64 -g -F dwarf -w+all
+ASFLAGS  := -f elf64 -g -F dwarf
 CFLAGS   := -Wall -Wextra -g -no-pie
 LDFLAGS  := 
 
