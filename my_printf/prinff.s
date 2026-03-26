@@ -11,16 +11,24 @@ section .bss
 section .text
 global my_printf
 
-; ==========================================================
-; my_printf
-; ==========================================================
+; --------------------------------------------------------------------------
+; void my_printf(const char *format, ...)
+; --------------------------------------------------------------------------
+; * Description: Main output function. Parses the format string and 
+;                processes specifiers: %b, %c, %d, %s, %x. 
+;                Uses internal buffering to minimize syscalls.
+; * Arguments:   RDI - Pointer to the format string
+;                RSI, RDX, RCX, R8, R9... - Variadic arguments
+; * Preserves:   RBP, R12, R13, R14
+; * Destroys:    RAX, RBX, RCX, RDX, RSI, RDI, FLAGS
+; --------------------------------------------------------------------------
 my_printf:
-    ; trampline
     push rbp
-    push r12
-    push r13        
-    push r14
+    push r12            ; r12 = current fmt string pointer
+    push r13            ; r13 = current argument pointer
+    push r14            ; r14 = current Buffer pointer
 
+    ; trampline
     push r9
     push r8
     push rcx
@@ -28,9 +36,9 @@ my_printf:
     push rsi
 
     mov rbp, rsp
-    mov r12, rdi            ; ptr to fmt string
-    mov r13, rbp            ; ptr to curr argument
-    lea r14, [Buffer]       ; curr ptr in buffer
+    mov r12, rdi
+    mov r13, rbp
+    lea r14, [Buffer]
 
 .next_char:
     mov al, [r12]
@@ -42,7 +50,7 @@ my_printf:
     je .handle_format
 
     movzx rdi, al
-    call print_char
+    call put_char_buffered
     jmp .next_char
 
 .handle_format:
@@ -55,7 +63,7 @@ my_printf:
     jne .check_jump_table
 
     movzx rdi, al
-    call print_char
+    call put_char_buffered
     jmp .next_char
 
 .check_jump_table:
@@ -69,8 +77,7 @@ my_printf:
     test rbx, rbx
     jz .next_char
     
-    call rbx
-    jmp .next_char
+    jmp rbx
 
 .done:
     call flush_buffer
@@ -89,7 +96,9 @@ jump_table:
     dq handle_b                     ; b
     dq handle_c                     ; c
     dq handle_d                     ; d
-    times ('r' - 'e' + 1) dq 0      ; e..r
+    times ('n' - 'e' + 1) dq 0      ; e..n
+    dq handle_o                     ; o
+    times ('r' - 'p' + 1) dq 0      ; p..r
     dq handle_s                     ; s
     times ('w' - 't' + 1) dq 0      ; t..w
     dq handle_x                     ; x
@@ -102,14 +111,14 @@ section .text
 handle_c:
     call get_arg
     mov rdi, rax
-    call print_char
-    ret
+    call put_char_buffered
+    jmp my_printf.next_char
 
 handle_s:
     call get_arg
     mov rdi, rax
     call print_string
-    ret
+    jmp my_printf.next_char
 
 handle_d:
     call get_arg
@@ -119,43 +128,58 @@ handle_d:
     
     push rax
     mov rdi, '-'
-    call print_char
+    call put_char_buffered
     pop rax
     neg rax
     
 .positive:
     mov rcx, 10
     call print_number_base
-    ret
+    jmp my_printf.next_char
 
 handle_b:
     call get_arg
     mov rcx, 2
     call print_number_base
-    ret
+    jmp my_printf.next_char
 
 handle_x:
     call get_arg
     mov rcx, 16
     call print_number_base
-    ret
+    jmp my_printf.next_char
+
+handle_o:
+    call get_arg
+    mov rcx, 8
+    call print_number_base
+    jmp my_printf.next_char
+
+
 
 ; ==========================================================
 ; Utils
 ; ==========================================================
-get_arg:
-    mov rax, [r13]
-    add r13, 8
-    lea rbx, [rbp + 40] 
-    cmp r13, rbx
-    jne .ok
-    add r13, 40         ; r14(8) + r13(8) + r12(8) + rbp(8) + RetAddr(8) = 40
-.ok:
-    ret
 
-print_char:
-    call put_char_buffered
-    ret
+; --------------------------------------------------------------------------
+; uint64_t get_arg()
+; --------------------------------------------------------------------------
+; * Description: Fetches the next argument from the trampoline on the stack.
+;                Handles transition from register-based args to stack-based.
+; * Arguments:   None (Uses R13)
+; * Returns:     RAX - Argument value
+; * Preserves:   RDI, RSI, RDX, RCX, R8, R9
+; * Destroys:    RAX, RBX, R13, FLAGS
+; --------------------------------------------------------------------------
+    get_arg:
+        mov rax, [r13]
+        add r13, 8
+        lea rbx, [rbp + 40] 
+        cmp r13, rbx
+        jne .ok
+        add r13, 40         ; r14(8) + r13(8) + r12(8) + rbp(8) + RetAddr(8) = 40
+    .ok:
+        ret
 
 print_string:
     mov rsi, rdi
@@ -174,6 +198,16 @@ print_string:
 .out:
     ret
 
+; --------------------------------------------------------------------------
+; void print_number_base(uint64_t val, uint64_t base)
+; --------------------------------------------------------------------------
+; * Description: Converts a number to a string using the specified base 
+;                (2, 10, or 16) and sends it to the buffer.
+; * Arguments:   RAX - Value to convert
+;                RCX - Numerical base
+; * Preserves:   R12, R13, R14
+; * Destroys:    RAX, RBX, RCX, RDX, RSI, RDI, FLAGS
+; --------------------------------------------------------------------------
 print_number_base:
     lea rsi, [NumBuffer + 63]
     mov byte [rsi], 0
@@ -201,9 +235,20 @@ print_number_base:
     call print_string
     ret
 
+
 ; ==========================================================
 ; Buffer function
 ; ==========================================================
+
+; --------------------------------------------------------------------------
+; void put_char_buffered(char c)
+; --------------------------------------------------------------------------
+; * Description: Adds a character to the internal buffer. Triggers 
+;                flush_buffer if the buffer reaches capacity (256 bytes).
+; * Arguments:   DIL - ASCII character
+; * Preserves:   RAX, RBX, RCX, RDX, RSI, RDI
+; * Destroys:    R14, FLAGS
+; --------------------------------------------------------------------------
 put_char_buffered:
     mov [r14], dil
     inc r14
@@ -213,6 +258,15 @@ put_char_buffered:
     je flush_buffer
     ret
 
+; --------------------------------------------------------------------------
+; void flush_buffer()
+; --------------------------------------------------------------------------
+; * Description: Performs a 'write' syscall (stdout) to output the 
+;                accumulated data in the buffer and resets the pointer.
+; * Arguments:   None
+; * Preserves:   RBX, RCX, R8-R15
+; * Destroys:    RAX, RDI, RSI, RDX, R11, R14, FLAGS
+; --------------------------------------------------------------------------
 flush_buffer:
     lea rsi, [Buffer]
     mov rdx, r14

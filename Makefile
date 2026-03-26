@@ -1,6 +1,6 @@
 AS       := nasm
 CC       := gcc
-ASFLAGS  := -f elf64 -g -F dwarf -w+all
+ASFLAGS  := -f elf64 -g -F dwarf
 CFLAGS   := -Wall -Wextra -g -no-pie
 LDFLAGS  := 
 
@@ -17,11 +17,10 @@ OBJECTS    := $(patsubst $(SRC_DIR)/%.s, $(OBJ_DIR)/%.o, $(AS_SOURCES)) \
               $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(C_SOURCES))
 
 .PHONY: all clean run debug disasm
-
+	
 all: $(OBJ_DIR) $(TARGET)
 
 $(TARGET): $(OBJECTS)
-	@if [ -z "$(OBJECTS)" ]; then echo "Error: No files to build!"; exit 1; fi
 	$(CC) $(LDFLAGS) $(OBJECTS) -o $(TARGET)
 	@echo "--- Build '$(TASK)' finished! ---"
 
