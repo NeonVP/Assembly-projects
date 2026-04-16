@@ -1,7 +1,6 @@
 #include "raylib.h"
 #include <stdlib.h>
 
-#if defined ()
 #include <arm_neon.h>
 
 #define WIDTH 800

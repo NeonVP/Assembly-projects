@@ -9,7 +9,7 @@
 #include <arm_neon.h>
 #endif
 
-#if defined(__AVX__) || 
+#if defined(__AVX__) || defined(__AVX512F__)
 #include <immintrin.h>
 #endif
 
@@ -661,6 +661,7 @@ static void mandelbrot_v3_x86( unsigned char *img,
 }
 
 static void mandelbrot_v3_x86_avx512( unsigned char *img, int width, int height, int max_iter, float xmin, float xmax, float ymin, float ymax ) {
+#if defined(__AVX512F__)
     float dx = ( xmax - xmin ) / width;
     float dy = ( ymax - ymin ) / height;
 
@@ -729,6 +730,9 @@ static void mandelbrot_v3_x86_avx512( unsigned char *img, int width, int height,
             img[row + x] = ( unsigned char )( iter >= max_iter ? 255 : iter );
         }
     }
+#else
+    mandelbrot_v3_x86( img, width, height, max_iter, xmin, xmax, ymin, ymax );
+#endif
 }
 
 const char *mandelbrot_impl_name( MandelbrotImpl impl ) {
@@ -745,82 +749,10 @@ const char *mandelbrot_impl_name( MandelbrotImpl impl ) {
         return "v3neon16";
     case MANDEL_IMPL_V3_X86:
         return "v3x86";
+    case MANDEL_IMPL_V3_X86_AVX512:
+        return "v3x86_avx512";
     default:
         return "unknown";
-    }
-}
-
-int mandelbrot_impl_from_string( const char *name, MandelbrotImpl *out_impl ) {
-    if ( !name || !out_impl )
-        return 0;
-
-    if ( strcmp( name, "v1" ) == 0 || strcmp( name, "naive" ) == 0 ) {
-        *out_impl = MANDEL_IMPL_V1;
-        return 1;
-    }
-    if ( strcmp( name, "v2" ) == 0 || strcmp( name, "arrayed" ) == 0 ) {
-        *out_impl = MANDEL_IMPL_V2;
-        return 1;
-    }
-    if ( strcmp( name, "v3neon8" ) == 0 || strcmp( name, "v3_neon8" ) == 0 ||
-         strcmp( name, "v3neon" ) == 0 || strcmp( name, "v3_neon" ) == 0 ||
-         strcmp( name, "neon" ) == 0 ) {
-        *out_impl = MANDEL_IMPL_V3_NEON8;
-        return 1;
-    }
-    if ( strcmp( name, "v3neon4" ) == 0 || strcmp( name, "v3_neon4" ) == 0 || strcmp( name, "neon4" ) == 0 ) {
-        *out_impl = MANDEL_IMPL_V3_NEON4;
-        return 1;
-    }
-    if ( strcmp( name, "v3neon16" ) == 0 || strcmp( name, "v3_neon16" ) == 0 || strcmp( name, "neon16" ) == 0 ) {
-        *out_impl = MANDEL_IMPL_V3_NEON16;
-        return 1;
-    }
-    if ( strcmp( name, "v3x86" ) == 0 || strcmp( name, "v3_x86" ) == 0 || strcmp( name, "x86" ) == 0 ) {
-        *out_impl = MANDEL_IMPL_V3_X86;
-        return 1;
-    }
-
-    return 0;
-}
-
-int mandelbrot_impl_available( MandelbrotImpl impl ) {
-    switch ( impl ) {
-    case MANDEL_IMPL_V1:
-    case MANDEL_IMPL_V2:
-        return 1;
-    case MANDEL_IMPL_V3_NEON8:
-#if defined(__aarch64__) || defined(__ARM_NEON)
-        return 1;
-#else
-        return 0;
-#endif
-    case MANDEL_IMPL_V3_NEON4:
-#if defined(__aarch64__) || defined(__ARM_NEON)
-        return 1;
-#else
-        return 0;
-#endif
-    case MANDEL_IMPL_V3_NEON16:
-#if defined(__aarch64__) || defined(__ARM_NEON)
-        return 1;
-#else
-        return 0;
-#endif
-    case MANDEL_IMPL_V3_X86:
-#if defined(__AVX__)
-        return 1;
-#else
-        return 0;
-#endif
-    case MANDEL_IMPL_V3_X86_AVX512:
-#if defined(__AVX512F__)
-        return 1;
-#else
-        return 0;
-#endif
-    default:
-        return 0;
     }
 }
 
@@ -846,6 +778,9 @@ void mandelbrot_compute( unsigned char *img, int width, int height, int max_iter
             return;
         case MANDEL_IMPL_V3_X86:
             mandelbrot_v3_x86( img, width, height, max_iter, xmin, xmax, ymin, ymax );
+            return;
+        case MANDEL_IMPL_V3_X86_AVX512:
+            mandelbrot_v3_x86_avx512( img, width, height, max_iter, xmin, xmax, ymin, ymax );
             return;
         default:
             mandelbrot_v1( img, width, height, max_iter, xmin, xmax, ymin, ymax );

@@ -12,8 +12,6 @@ typedef enum MandelbrotImpl {
 } MandelbrotImpl;
 
 const char *mandelbrot_impl_name( MandelbrotImpl impl );
-int mandelbrot_impl_from_string( const char *name, MandelbrotImpl *out_impl );
-int mandelbrot_impl_available( MandelbrotImpl impl );
 
 void mandelbrot_compute( unsigned char *img, int width, int height, 
                          int max_iter, 

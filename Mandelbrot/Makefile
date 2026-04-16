@@ -1,5 +1,6 @@
 CC := gcc
 BASE_CFLAGS := -Wall -Wextra -O3
+UNAME_S := $(shell uname -s)
 
 RAYLIB_LIBS_COMMON := -lraylib -lm -lpthread -ldl
 
@@ -29,11 +30,12 @@ V3X86_AVX512_BIN := MandelbrotV3x86_avx512
 
 BENCH_X86_BIN := MandelbrotBench_x86
 BENCH_MAC_BIN := MandelbrotBench_mac
+BENCH_PLOT := $(BENCH_CSV_DIR)/benchmark_avg.svg
 
 BENCH_RUNS ?= 1000
 BENCH_WARMUP ?= 25
 
-.PHONY: all clean bench bench_mac variants v1 v2 v3neon8 v3neon4 v3neon16 v3neon32 v3x86 v3x86_avx512
+.PHONY: all clean bench bench_x86 bench_mac benchcsv benchcsv_x86 benchcsv_mac plot variants v1 v2 v3neon8 v3neon4 v3neon16 v3neon32 v3x86 v3x86_avx512
 
 all: variants
 
@@ -79,19 +81,23 @@ variants: v1 v2 v3neon8 v3neon4 v3neon16 v3neon32 v3x86 v3x86_avx512
 
 # Benchmarks
 # x86
-$(OBJ_DIR)/MandelbrotBench.o: $(SRC_DIR)/MandelbrotBench.c | $(OBJ_DIR)
+$(OBJ_DIR)/MandelbrotBench_x86.o: $(SRC_DIR)/MandelbrotBench_x86.c | $(OBJ_DIR)
 	$(CC) $(BASE_CFLAGS) -mavx -mavx512f -I$(INC_DIR) -c $< -o $@
 
-$(OBJ_DIR)/MandelbrotFn.o: $(SRC_DIR)/MandelbrotFn.c | $(OBJ_DIR)
+$(OBJ_DIR)/MandelbrotFn_x86.o: $(SRC_DIR)/MandelbrotFn.c | $(OBJ_DIR)
 	$(CC) $(BASE_CFLAGS) -mavx -mavx512f -I$(INC_DIR) -c $< -o $@
 
-$(BENCH_X86_BIN): $(OBJ_DIR)/MandelbrotBench.o $(OBJ_DIR)/MandelbrotFn.o
+$(BENCH_X86_BIN): $(OBJ_DIR)/MandelbrotBench_x86.o $(OBJ_DIR)/MandelbrotFn_x86.o
 	$(CC) $^ -lm -lpthread -o $@
 
-bench: $(BENCH_X86_BIN)
+bench_x86: $(BENCH_X86_BIN)
 	./$(BENCH_X86_BIN) $(BENCH_RUNS) $(BENCH_WARMUP)
 
-# NEON
+benchcsv_x86: $(BENCH_X86_BIN)
+	@mkdir -p $(BENCH_CSV_DIR)
+	./$(BENCH_X86_BIN) $(BENCH_RUNS) $(BENCH_WARMUP) $(BENCH_CSV_DIR)/bench_$$(date +%Y%m%d_%H%M%S)_x86.csv
+
+# NEON/macOS
 $(OBJ_DIR)/MandelbrotBench_mac.o: $(SRC_DIR)/MandelbrotBench_mac.c | $(OBJ_DIR)
 	$(CC) $(BASE_CFLAGS) -I$(INC_DIR) -c $< -o $@
 
@@ -104,8 +110,15 @@ $(BENCH_MAC_BIN): $(OBJ_DIR)/MandelbrotBench_mac.o $(OBJ_DIR)/MandelbrotFn_mac.o
 bench_mac: $(BENCH_MAC_BIN)
 	./$(BENCH_MAC_BIN) $(BENCH_RUNS) $(BENCH_WARMUP)
 
+benchcsv_mac: $(BENCH_MAC_BIN)
+	@mkdir -p $(BENCH_CSV_DIR)
+	./$(BENCH_MAC_BIN) $(BENCH_RUNS) $(BENCH_WARMUP) $(BENCH_CSV_DIR)/bench_$$(date +%Y%m%d_%H%M%S)_mac.csv
+
+plot:
+	@mkdir -p $(BENCH_CSV_DIR)
+	python3 scripts/plot_bench.py --input-glob "$(BENCH_CSV_DIR)/*.csv" --output "$(BENCH_PLOT)"
 
 clean:
 	rm -rf $(OBJ_DIR) $(BENCH_X86_BIN) $(BENCH_MAC_BIN) \
 		$(V1_BIN) $(V2_BIN) $(V3NEON8_BIN) $(V3NEON4_BIN) \
-		$(V3NEON16_BIN) $(V3NEON32_BIN) $(V3X86_BIN) $(V3X86_AVX512_BIN)
+		$(V3NEON16_BIN) $(V3NEON32_BIN) $(V3X86_BIN) $(V3X86_AVX512_BIN) $(BENCH_PLOT)

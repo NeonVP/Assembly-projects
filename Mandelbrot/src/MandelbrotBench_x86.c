@@ -11,7 +11,6 @@
 
 typedef struct BenchResult {
     MandelbrotImpl impl;
-    int available;
     uint64_t avg_ticks;
     uint64_t best_ticks;
     uint64_t checksum;
@@ -37,9 +36,7 @@ static uint64_t checksum_img( const unsigned char *img, size_t n ) {
 
 static BenchResult run_case( MandelbrotImpl impl, unsigned char *buffer, int runs, int warmup,
                              float xmin, float xmax, float ymin, float ymax ) {
-    BenchResult r = { .impl = impl, .available = mandelbrot_impl_available( impl ) };
-
-    if ( !r.available ) return r;
+    BenchResult r = { .impl = impl };
 
     for ( int i = 0; i < warmup; i++ )
         mandelbrot_compute( buffer, WIDTH, HEIGHT, MAX_ITER, xmin, xmax, ymin, ymax, impl );
@@ -80,7 +77,7 @@ static void write_csv( const char *path, const BenchResult *results, int count, 
     for ( int i = 0; i < count; i++ ) {
         const BenchResult *r = &results[i];
         fprintf( f, "%s,%d,%llu,%llu,%.6f,%.6f,%016llx,%d,%d,%d,%d,%d,cycles\n",
-                 mandelbrot_impl_name( r->impl ), r->available, ( unsigned long long )r->avg_ticks,
+                 mandelbrot_impl_name( r->impl ), 1, ( unsigned long long )r->avg_ticks,
                  ( unsigned long long )r->best_ticks, r->avg_ms, r->best_ms,
                  ( unsigned long long )r->checksum, runs, warmup, WIDTH, HEIGHT, MAX_ITER );
     }
@@ -108,9 +105,9 @@ int main( int argc, char **argv ) {
     for ( int i = 0; i < impl_count; i++ ) {
         results[i] = run_case( impls[i], buffer, runs, warmup, xmin, xmax, ymin, ymax );
 
-        if ( impls[i] == MANDEL_IMPL_V1 && results[i].available ) {
+        if ( impls[i] == MANDEL_IMPL_V1 ) {
             base_avg_ticks = results[i].avg_ticks;
-        } else if ( base_avg_ticks > 0 && results[i].available ) {
+        } else if ( base_avg_ticks > 0 ) {
             double speedup = ( double )base_avg_ticks / ( double )results[i].avg_ticks;
             printf( "           speedup vs v1: x%.2f\n", speedup );
         }
