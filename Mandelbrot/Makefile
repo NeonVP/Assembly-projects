@@ -79,13 +79,13 @@ variants: v1 v2 v3neon8 v3neon4 v3neon16 v3neon32 v3x86 v3x86_avx512
 
 # Benchmarks
 # x86
-$(OBJ_DIR)/MandelbrotBench_x86.o: $(SRC_DIR)/MandelbrotBench_x86.c | $(OBJ_DIR)
+$(OBJ_DIR)/MandelbrotBench.o: $(SRC_DIR)/MandelbrotBench.c | $(OBJ_DIR)
 	$(CC) $(BASE_CFLAGS) -mavx -mavx512f -I$(INC_DIR) -c $< -o $@
 
-$(OBJ_DIR)/MandelbrotFn_x86.o: $(SRC_DIR)/MandelbrotFn.c | $(OBJ_DIR)
+$(OBJ_DIR)/MandelbrotFn.o: $(SRC_DIR)/MandelbrotFn.c | $(OBJ_DIR)
 	$(CC) $(BASE_CFLAGS) -mavx -mavx512f -I$(INC_DIR) -c $< -o $@
 
-$(BENCH_X86_BIN): $(OBJ_DIR)/MandelbrotBench_x86.o $(OBJ_DIR)/MandelbrotFn_x86.o
+$(BENCH_X86_BIN): $(OBJ_DIR)/MandelbrotBench.o $(OBJ_DIR)/MandelbrotFn.o
 	$(CC) $^ -lm -lpthread -o $@
 
 bench: $(BENCH_X86_BIN)

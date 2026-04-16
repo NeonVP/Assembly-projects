@@ -1,11 +1,9 @@
 #include "raylib.h"
+
 #include <stdalign.h>
 #include <stdlib.h>
 #include <stdio.h>
-
-#if defined(__AVX512F__)
 #include <immintrin.h>
-#endif
 
 #define WIDTH 800
 #define HEIGHT 600
@@ -13,7 +11,6 @@
 #define L_MAX 100.0f
 
 static void compute_v3_x86( unsigned char *img, float xmin, float xmax, float ymin, float ymax ) {
-#if defined(__AVX512F__)
     static int printed = 0;
     if ( !printed ) { printf("[DEBUG] AVX-512 ENABLED AND RUNNING!\n"); printed = 1; }
 
@@ -84,13 +81,6 @@ static void compute_v3_x86( unsigned char *img, float xmin, float xmax, float ym
             img[row + x] = ( unsigned char )( iter >= MAX_ITER ? 255 : iter );
         }
     }
-#else
-    static int printed = 0;
-    if (!printed) { printf("[DEBUG] FALLBACK COMPILED (Makefile lacks -mavx512f)\n"); printed = 1; }
-    
-    ( void )xmin; ( void )xmax; ( void )ymin; ( void )ymax;
-    for ( int i = 0; i < WIDTH * HEIGHT; i++ ) img[i] = 100;
-#endif
 }
 
 static Color palette( unsigned char iter ) {
@@ -98,7 +88,7 @@ static Color palette( unsigned char iter ) {
     return ( Color ){ iter * 9, iter * 7, iter * 5, 255 };
 }
 
-int main( void ) {
+int main() {
     InitWindow( WIDTH, HEIGHT, "Mandelbrot v3 x86 (AVX-512)" );
     SetTargetFPS( 1024 );
 

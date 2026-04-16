@@ -9,7 +9,7 @@
 #include <arm_neon.h>
 #endif
 
-#if defined(__AVX__)
+#if defined(__AVX__) || 
 #include <immintrin.h>
 #endif
 
@@ -50,7 +50,7 @@ static void mandelbrot_v1( unsigned char *img,
 }
 
 enum { VEC_SIZE = 8 };
-enum { _CMP_LE_OQ = 18 };
+enum { CMP_LE_OQ = 18 };
 
 typedef union {
     float f[VEC_SIZE];
@@ -113,7 +113,7 @@ static inline m256 mm_and_ps( m256 a, m256 b ) {
 
 static inline m256 mm_cmp_ps( m256 a, m256 b, const int imm8 ) {
     m256 out = {};
-    if ( imm8 != _CMP_LE_OQ )
+    if ( imm8 != CMP_LE_OQ )
         return out;
 
     for ( int i = 0; i < VEC_SIZE; i++ )
@@ -187,7 +187,7 @@ static void mandelbrot_v2( unsigned char *img,
                 m256 z_y2 = mm_mul_ps( z_y, z_y );
                 m256 z_xy = mm_mul_ps( z_x, z_y );
                 m256 radius2 = mm_add_ps( z_x2, z_y2 );
-                m256 mask = mm_cmp_ps( radius2, radius_max, _CMP_LE_OQ );
+                m256 mask = mm_cmp_ps( radius2, radius_max, CMP_LE_OQ );
 
                 if ( mm_movemask_ps( mask ) == 0 )
                     break;
@@ -658,6 +658,77 @@ static void mandelbrot_v3_x86( unsigned char *img,
 #else
     mandelbrot_v1( img, width, height, max_iter, xmin, xmax, ymin, ymax );
 #endif
+}
+
+static void mandelbrot_v3_x86_avx512( unsigned char *img, int width, int height, int max_iter, float xmin, float xmax, float ymin, float ymax ) {
+    float dx = ( xmax - xmin ) / width;
+    float dy = ( ymax - ymin ) / height;
+
+    __m512 radius = _mm512_set1_ps( L_MAX );
+    __m512 two = _mm512_set1_ps( 2.0f );
+    __m512 one_ps = _mm512_set1_ps( 1.0f );
+    __m512 dx_vec = _mm512_set1_ps( dx );
+
+    __m512 idx = _mm512_set_ps( 15.0f, 14.0f, 13.0f, 12.0f, 11.0f, 10.0f, 9.0f, 8.0f,
+                                7.0f,  6.0f,  5.0f,  4.0f,  3.0f,  2.0f,  1.0f, 0.0f );
+
+    for ( int y = 0; y < height; y++ ) {
+        float cy_scalar = ymin + y * dy;
+        __m512 cy = _mm512_set1_ps( cy_scalar );
+        int row = y * width;
+        int x = 0;
+
+        for ( ; x <= width - 16; x += 16 ) {
+            float base_x = xmin + x * dx;
+            __m512 cx = _mm512_add_ps( _mm512_set1_ps( base_x ), _mm512_mul_ps( idx, dx_vec ) );
+            
+            __m512 zx = _mm512_setzero_ps();
+            __m512 zy = _mm512_setzero_ps();
+            __m512 iters = _mm512_setzero_ps();
+
+            for ( int it = 0; it < max_iter; it++ ) {
+                __m512 zx2 = _mm512_mul_ps( zx, zx );
+                __m512 zy2 = _mm512_mul_ps( zy, zy );
+                __m512 radius2 = _mm512_add_ps( zx2, zy2 );
+                
+                __mmask16 mask = _mm512_cmp_ps_mask( radius2, radius, _CMP_LE_OQ );
+
+                if ( mask == 0 ) break;
+
+                __m512 zxy = _mm512_mul_ps( zx, zy );
+                __m512 nx = _mm512_add_ps( _mm512_sub_ps( zx2, zy2 ), cx );
+                __m512 ny = _mm512_add_ps( _mm512_mul_ps( two, zxy ), cy );
+
+                zx = _mm512_mask_blend_ps( mask, zx, nx );
+                zy = _mm512_mask_blend_ps( mask, zy, ny );
+                iters = _mm512_mask_add_ps( iters, mask, iters, one_ps );
+            }
+
+            alignas( 64 ) float out_iters[16];
+            _mm512_store_ps( out_iters, iters );
+            for ( int k = 0; k < 16; k++ ) {
+                int iter = ( int )out_iters[k];
+                img[row + x + k] = ( unsigned char )( iter >= max_iter ? 255 : iter );
+            }
+        }
+
+        // Хвост для ширины не кратной 16
+        for ( ; x < width; x++ ) {
+            float cx = xmin + x * dx;
+            float zx = 0.0f;
+            float zy = 0.0f;
+            int iter = 0;
+            while ( ( zx * zx + zy * zy <= L_MAX ) && ( iter < max_iter ) ) {
+                float zx2 = zx * zx;
+                float zy2 = zy * zy;
+                float zxy = zx * zy;
+                zy = 2.0f * zxy + cy_scalar;
+                zx = zx2 - zy2 + cx;
+                iter++;
+            }
+            img[row + x] = ( unsigned char )( iter >= max_iter ? 255 : iter );
+        }
+    }
 }
 
 const char *mandelbrot_impl_name( MandelbrotImpl impl ) {
