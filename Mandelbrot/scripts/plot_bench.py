@@ -23,18 +23,27 @@ ALIASES = {
     "v3_neon8": "v3neon8",
     "v3neon": "v3neon8",
     "v3_x86": "v3x86",
+    "v3_x86_avx512": "v3x86avx512",
     "v3_neon4": "v3neon4",
 }
 
-ORDER = ["v1", "v2", "v3neon8", "v3neon4", "v3neon16", "v3x86"]
+ORDER = ["v1", "v2", "v3neon8", "v3neon4", "v3neon16", "v3x86", "v3x86avx512"]
 
 
 class ImplStats:
     def __init__(self) -> None:
         self.values: List[float] = []
+        self.rms_ticks_values: List[float] = []
+        self.rel_rms_percent_values: List[float] = []
 
     def add(self, value: float) -> None:
         self.values.append(value)
+
+    def add_rms_ticks(self, value: float) -> None:
+        self.rms_ticks_values.append(value)
+
+    def add_rel_rms_percent(self, value: float) -> None:
+        self.rel_rms_percent_values.append(value)
 
     @property
     def mean(self) -> float:
@@ -48,6 +57,14 @@ class ImplStats:
         m = self.mean
         var = sum((x - m) ** 2 for x in self.values) / (n - 1)
         return math.sqrt(var)
+
+    @property
+    def mean_rms_ticks(self) -> float:
+        return fmean(self.rms_ticks_values) if self.rms_ticks_values else 0.0
+
+    @property
+    def mean_rel_rms_percent(self) -> float:
+        return fmean(self.rel_rms_percent_values) if self.rel_rms_percent_values else 0.0
 
 
 
@@ -70,6 +87,13 @@ def read_rows(paths: List[str]) -> Tuple[str, Dict[str, ImplStats]]:
                 impl = normalize_impl(row.get("impl", "").strip())
                 avg_ms = float(row.get("avg_ms", "0") or 0)
                 avg_ticks = float(row.get("avg_ticks", "0") or 0)
+                rms_ticks = float(row.get("rms_ticks", "0") or 0)
+                rel_rms_percent = float(row.get("rel_rms_percent", "0") or 0)
+
+                if rms_ticks > 0.0:
+                    stats[impl].add_rms_ticks(rms_ticks)
+                if rel_rms_percent > 0.0:
+                    stats[impl].add_rel_rms_percent(rel_rms_percent)
 
                 if avg_ms > 0.0:
                     metric = "avg_ms"
@@ -157,6 +181,10 @@ def build_svg(metric: str, stats: Dict[str, ImplStats], title: str) -> str:
 
         parts.append(f'<text x="{x_center:.2f}" y="{top + plot_h + 22}" text-anchor="middle" font-size="13" font-family="Arial" fill="#111">{impl}</text>')
         parts.append(f'<text x="{x_center:.2f}" y="{y_bar - 8:.2f}" text-anchor="middle" font-size="12" font-family="Arial" fill="#111">{fmt_value(mean, metric)}</text>')
+        if stats[impl].mean_rel_rms_percent > 0.0:
+            parts.append(
+                f'<text x="{x_center:.2f}" y="{y_bar - 24:.2f}" text-anchor="middle" font-size="11" font-family="Arial" fill="#374151">rel rms: {stats[impl].mean_rel_rms_percent:.2f}%</text>'
+            )
 
     lx = left + plot_w - 250
     ly = top + 10
@@ -194,7 +222,10 @@ def main() -> int:
         if impl not in stats:
             continue
         s = stats[impl]
-        print(f"{impl:8} mean={s.mean:.4f} stddev={s.stddev:.4f} n={len(s.values)}")
+        print(
+            f"{impl:10} mean={s.mean:.4f} stddev={s.stddev:.4f} "
+            f"rms_ticks={s.mean_rms_ticks:.2f} rel_rms={s.mean_rel_rms_percent:.2f}% n={len(s.values)}"
+        )
 
     return 0
 

@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #define WIDTH 800
 #define HEIGHT 600
@@ -17,6 +18,8 @@ typedef struct BenchResult {
     MandelbrotImpl impl;
     uint64_t avg_ticks;
     uint64_t best_ticks;
+    double rms_ticks;
+    double rel_rms_percent;
     uint64_t checksum;
     double avg_ms;
     double best_ms;
@@ -66,24 +69,36 @@ static BenchResult run_case( MandelbrotImpl impl, unsigned char *buffer, int run
 
     uint64_t total_ticks = 0;
     uint64_t best_ticks = UINT64_MAX;
+    long double sum_ticks = 0.0L;
+    long double sumsq_ticks = 0.0L;
 
     for ( int i = 0; i < runs; i++ ) {
         uint64_t t0 = now_ticks();
         mandelbrot_compute( buffer, WIDTH, HEIGHT, MAX_ITER, xmin, xmax, ymin, ymax, impl );
         uint64_t dt = now_ticks() - t0;
         total_ticks += dt;
+        sum_ticks += ( long double )dt;
+        sumsq_ticks += ( long double )dt * ( long double )dt;
         if ( dt < best_ticks )
             best_ticks = dt;
     }
 
     r.avg_ticks = total_ticks / ( uint64_t )runs;
     r.best_ticks = best_ticks;
+    {
+        long double mean = sum_ticks / ( long double )runs;
+        long double variance = sumsq_ticks / ( long double )runs - mean * mean;
+        if ( variance < 0.0L ) variance = 0.0L;
+        r.rms_ticks = sqrt( ( double )variance );
+        r.rel_rms_percent = ( mean > 0.0L ) ? ( r.rms_ticks / ( double )mean ) * 100.0 : 0.0;
+    }
     r.checksum = checksum_img( buffer, ( size_t )WIDTH * HEIGHT );
     r.avg_ms = ticks_to_ms( r.avg_ticks );
     r.best_ms = ticks_to_ms( r.best_ticks );
 
-    printf( "%-10s avg: %8.3f ms | best: %8.3f ms | checksum: %016llx\n",
-            mandelbrot_impl_name( impl ), r.avg_ms, r.best_ms, ( unsigned long long )r.checksum );
+    printf( "%-10s avg: %8.3f ms | best: %8.3f ms | rms: %10.2f ticks | rel: %6.2f%% | checksum: %016llx\n",
+            mandelbrot_impl_name( impl ), r.avg_ms, r.best_ms, r.rms_ticks, r.rel_rms_percent,
+            ( unsigned long long )r.checksum );
 
     return r;
 }
@@ -96,14 +111,15 @@ static void write_csv( const char *path, const BenchResult *results, int count, 
         return;
     }
 
-    fprintf( f, "impl,available,avg_ticks,best_ticks,avg_ms,best_ms,checksum,runs,warmup,width,"
+    fprintf( f, "impl,available,avg_ticks,best_ticks,rms_ticks,rel_rms_percent,avg_ms,best_ms,checksum,runs,warmup,width,"
                 "height,max_iter,timer_unit\n" );
 
     for ( int i = 0; i < count; i++ ) {
         const BenchResult *r = &results[i];
-        fprintf( f, "%s,%d,%llu,%llu,%.6f,%.6f,%016llx,%d,%d,%d,%d,%d,%s\n",
+        fprintf( f, "%s,%d,%llu,%llu,%.6f,%.6f,%.6f,%.6f,%016llx,%d,%d,%d,%d,%d,%s\n",
                  mandelbrot_impl_name( r->impl ), 1, ( unsigned long long )r->avg_ticks,
-                 ( unsigned long long )r->best_ticks, r->avg_ms, r->best_ms,
+                 ( unsigned long long )r->best_ticks, r->rms_ticks, r->rel_rms_percent,
+                 r->avg_ms, r->best_ms,
                  ( unsigned long long )r->checksum, runs, warmup, WIDTH, HEIGHT, MAX_ITER,
                  timer_unit() );
     }
