@@ -1,6 +1,8 @@
 #ifndef MANDELBROT_H
 #define MANDELBROT_H
 
+#include <stdint.h>
+
 typedef enum MandelbrotImpl {
     MANDEL_IMPL_V1 = 0,
     MANDEL_IMPL_V2,
@@ -18,5 +20,11 @@ void mandelbrot_compute( unsigned char *img, int width, int height,
                          float xmin, float xmax, 
                          float ymin, float ymax, 
                          MandelbrotImpl impl );
+
+uint64_t mandelbrot_bench_compute( unsigned char *img, int width, int height,
+                                   int max_iter,
+                                   float xmin, float xmax,
+                                   float ymin, float ymax,
+                                   MandelbrotImpl impl );
 
 #endif

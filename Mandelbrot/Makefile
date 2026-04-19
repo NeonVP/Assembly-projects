@@ -1,6 +1,7 @@
 CC := gcc
 BASE_CFLAGS := -Wall -Wextra -O3
 UNAME_S := $(shell uname -s)
+UNAME_M := $(shell uname -m)
 
 RAYLIB_LIBS_COMMON := -lraylib -lm -lpthread -ldl
 
@@ -38,6 +39,14 @@ BENCH_WARMUP ?= 25
 .PHONY: all clean bench bench_x86 bench_mac benchcsv benchcsv_x86 benchcsv_mac plot variants v1 v2 v3neon8 v3neon4 v3neon16 v3neon32 v3x86 v3x86_avx512
 
 all: variants
+
+ifeq ($(UNAME_M),x86_64)
+bench: bench_x86
+benchcsv: benchcsv_x86
+else
+bench: bench_mac
+benchcsv: benchcsv_mac
+endif
 
 $(OBJ_DIR):
 	mkdir -p $(OBJ_DIR)
@@ -81,10 +90,11 @@ variants: v1 v2 v3neon8 v3neon4 v3neon16 v3neon32 v3x86 v3x86_avx512
 
 # Benchmarks
 # x86
+ifeq ($(UNAME_M),x86_64)
 $(OBJ_DIR)/MandelbrotBench_x86.o: $(SRC_DIR)/MandelbrotBench_x86.c | $(OBJ_DIR)
 	$(CC) $(BASE_CFLAGS) -mavx -mavx512f -I$(INC_DIR) -c $< -o $@
 
-$(OBJ_DIR)/MandelbrotFn_x86.o: $(SRC_DIR)/MandelbrotFn.c | $(OBJ_DIR)
+$(OBJ_DIR)/MandelbrotFn_x86.o: $(SRC_DIR)/MandelbrotFn_x86.c | $(OBJ_DIR)
 	$(CC) $(BASE_CFLAGS) -mavx -mavx512f -I$(INC_DIR) -c $< -o $@
 
 $(BENCH_X86_BIN): $(OBJ_DIR)/MandelbrotBench_x86.o $(OBJ_DIR)/MandelbrotFn_x86.o
@@ -96,12 +106,21 @@ bench_x86: $(BENCH_X86_BIN)
 benchcsv_x86: $(BENCH_X86_BIN)
 	@mkdir -p $(BENCH_CSV_DIR)
 	./$(BENCH_X86_BIN) $(BENCH_RUNS) $(BENCH_WARMUP) $(BENCH_CSV_DIR)/bench_$$(date +%Y%m%d_%H%M%S)_x86.csv
+else
+bench_x86:
+	@echo "bench_x86 requires an x86_64 host"
+	@exit 1
+
+benchcsv_x86:
+	@echo "benchcsv_x86 requires an x86_64 host"
+	@exit 1
+endif
 
 # NEON/macOS
 $(OBJ_DIR)/MandelbrotBench_mac.o: $(SRC_DIR)/MandelbrotBench_mac.c | $(OBJ_DIR)
 	$(CC) $(BASE_CFLAGS) -I$(INC_DIR) -c $< -o $@
 
-$(OBJ_DIR)/MandelbrotFn_mac.o: $(SRC_DIR)/MandelbrotFn.c | $(OBJ_DIR)
+$(OBJ_DIR)/MandelbrotFn_mac.o: $(SRC_DIR)/MandelbrotFn_mac.c | $(OBJ_DIR)
 	$(CC) $(BASE_CFLAGS) -I$(INC_DIR) -c $< -o $@
 
 $(BENCH_MAC_BIN): $(OBJ_DIR)/MandelbrotBench_mac.o $(OBJ_DIR)/MandelbrotFn_mac.o

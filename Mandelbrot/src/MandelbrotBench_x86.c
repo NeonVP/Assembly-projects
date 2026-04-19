@@ -28,53 +28,54 @@ static uint64_t now_ticks( void ) {
     return t;
 }
 
-static uint64_t checksum_img( const unsigned char *img, size_t n ) {
-    uint64_t h = 1469598103934665603ull;
-    for ( size_t i = 0; i < n; i++ ) {
-        h ^= img[i];
-        h *= 1099511628211ull;
-    }
-    return h;
-}
-
 static BenchResult run_case( MandelbrotImpl impl, unsigned char *buffer, int runs, int warmup,
                              float xmin, float xmax, float ymin, float ymax ) {
     BenchResult r = { .impl = impl };
+    uint64_t checksum = 0;
 
     for ( int i = 0; i < warmup; i++ )
-        mandelbrot_compute( buffer, WIDTH, HEIGHT, MAX_ITER, xmin, xmax, ymin, ymax, impl );
+        checksum = mandelbrot_bench_compute( buffer, WIDTH, HEIGHT, MAX_ITER, xmin, xmax, ymin, ymax, impl );
 
-    uint64_t total_ticks = 0;
     uint64_t best_ticks = UINT64_MAX;
+    uint64_t worst_ticks = 0;
     long double sum_ticks = 0.0L;
     long double sumsq_ticks = 0.0L;
 
     for ( int i = 0; i < runs; i++ ) {
         uint64_t t0 = now_ticks();
-        mandelbrot_compute( buffer, WIDTH, HEIGHT, MAX_ITER, xmin, xmax, ymin, ymax, impl );
+        checksum = mandelbrot_bench_compute( buffer, WIDTH, HEIGHT, MAX_ITER, xmin, xmax, ymin, ymax, impl );
         uint64_t dt = now_ticks() - t0;
-        total_ticks += dt;
         sum_ticks += ( long double )dt;
         sumsq_ticks += ( long double )dt * ( long double )dt;
         if ( dt < best_ticks ) best_ticks = dt;
+        if ( dt > worst_ticks ) worst_ticks = dt;
     }
 
-    r.avg_ticks = total_ticks / ( uint64_t )runs;
-    r.best_ticks = best_ticks;
-    {
-        long double mean = sum_ticks / ( long double )runs;
-        long double variance = sumsq_ticks / ( long double )runs - mean * mean;
-        if ( variance < 0.0L ) variance = 0.0L;
-        r.rms_ticks = sqrt( ( double )variance );
-        r.rel_rms_percent = ( mean > 0.0L ) ? ( r.rms_ticks / ( double )mean ) * 100.0 : 0.0;
+    int effective_runs = runs;
+    long double eff_sum = sum_ticks;
+    long double eff_sumsq = sumsq_ticks;
+    if ( runs > 2 ) {
+        effective_runs = runs - 2;
+        eff_sum -= ( long double )best_ticks + ( long double )worst_ticks;
+        eff_sumsq -= ( long double )best_ticks * ( long double )best_ticks +
+                     ( long double )worst_ticks * ( long double )worst_ticks;
     }
-    r.checksum = checksum_img( buffer, ( size_t )WIDTH * HEIGHT );
+
+    long double mean = eff_sum / ( long double )effective_runs;
+    long double variance = eff_sumsq / ( long double )effective_runs - mean * mean;
+    if ( variance < 0.0L ) variance = 0.0L;
+
+    r.avg_ticks = ( uint64_t )( mean + 0.5L );
+    r.best_ticks = best_ticks;
+    r.rms_ticks = sqrt( ( double )variance );
+    r.rel_rms_percent = ( mean > 0.0L ) ? ( r.rms_ticks / ( double )mean ) * 100.0 : 0.0;
+    r.checksum = checksum;
     r.avg_ms = -1.0;  // Заглушка для совместимости с питон скриптом (он поймет, что это тики)
     r.best_ms = -1.0; 
 
-    printf( "%-10s avg: %12llu cycles | best: %12llu cycles | rms: %10.2f | rel: %6.2f%% | checksum: %016llx\n",
+    printf( "%-10s avg: %12llu cycles | rms: %10.2f | rel: %6.2f%% | checksum: %016llx\n",
             mandelbrot_impl_name( impl ), ( unsigned long long )r.avg_ticks,
-            ( unsigned long long )r.best_ticks, r.rms_ticks, r.rel_rms_percent,
+            r.rms_ticks, r.rel_rms_percent,
             ( unsigned long long )r.checksum );
 
     return r;
@@ -108,13 +109,17 @@ int main( int argc, char **argv ) {
     const char *csv_path = ( argc > 3 ) ? argv[3] : NULL;
 
     unsigned char *buffer = malloc( ( size_t )WIDTH * HEIGHT );
+    if ( !buffer ) {
+        fprintf( stderr, "allocation failed\n" );
+        return 1;
+    }
     float xmin = -2.2f, xmax = 1.0f, ymin = -1.2f, ymax = 1.2f;
     
     MandelbrotImpl impls[] = { MANDEL_IMPL_V1, MANDEL_IMPL_V2, MANDEL_IMPL_V3_X86, MANDEL_IMPL_V3_X86_AVX512 };
     const int impl_count = ( int )( sizeof( impls ) / sizeof( impls[0] ) );
     BenchResult results[4] = { 0 };
 
-    printf( "Mandelbrot Linux x86 Benchmark | %dx%d | MAX_ITER=%d | runs=%d warmup=%d\n", 
+    printf( "Mandelbrot x86 benchmark | %dx%d | MAX_ITER=%d | runs=%d warmup=%d\n",
             WIDTH, HEIGHT, MAX_ITER, runs, warmup );
 
     uint64_t base_avg_ticks = 0;

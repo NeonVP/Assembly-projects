@@ -67,8 +67,8 @@ static BenchResult run_case( MandelbrotImpl impl, unsigned char *buffer, int run
     for ( int i = 0; i < warmup; i++ )
         mandelbrot_compute( buffer, WIDTH, HEIGHT, MAX_ITER, xmin, xmax, ymin, ymax, impl );
 
-    uint64_t total_ticks = 0;
     uint64_t best_ticks = UINT64_MAX;
+    uint64_t worst_ticks = 0;
     long double sum_ticks = 0.0L;
     long double sumsq_ticks = 0.0L;
 
@@ -76,28 +76,39 @@ static BenchResult run_case( MandelbrotImpl impl, unsigned char *buffer, int run
         uint64_t t0 = now_ticks();
         mandelbrot_compute( buffer, WIDTH, HEIGHT, MAX_ITER, xmin, xmax, ymin, ymax, impl );
         uint64_t dt = now_ticks() - t0;
-        total_ticks += dt;
         sum_ticks += ( long double )dt;
         sumsq_ticks += ( long double )dt * ( long double )dt;
         if ( dt < best_ticks )
             best_ticks = dt;
+        if ( dt > worst_ticks )
+            worst_ticks = dt;
     }
 
-    r.avg_ticks = total_ticks / ( uint64_t )runs;
-    r.best_ticks = best_ticks;
-    {
-        long double mean = sum_ticks / ( long double )runs;
-        long double variance = sumsq_ticks / ( long double )runs - mean * mean;
-        if ( variance < 0.0L ) variance = 0.0L;
-        r.rms_ticks = sqrt( ( double )variance );
-        r.rel_rms_percent = ( mean > 0.0L ) ? ( r.rms_ticks / ( double )mean ) * 100.0 : 0.0;
+    int effective_runs = runs;
+    long double eff_sum = sum_ticks;
+    long double eff_sumsq = sumsq_ticks;
+    if ( runs > 2 ) {
+        effective_runs = runs - 2;
+        eff_sum -= ( long double )best_ticks + ( long double )worst_ticks;
+        eff_sumsq -= ( long double )best_ticks * ( long double )best_ticks +
+                     ( long double )worst_ticks * ( long double )worst_ticks;
     }
+
+    long double mean = eff_sum / ( long double )effective_runs;
+    long double variance = eff_sumsq / ( long double )effective_runs - mean * mean;
+    if ( variance < 0.0L )
+        variance = 0.0L;
+
+    r.avg_ticks = ( uint64_t )( mean + 0.5L );
+    r.best_ticks = best_ticks;
+    r.rms_ticks = sqrt( ( double )variance );
+    r.rel_rms_percent = ( mean > 0.0L ) ? ( r.rms_ticks / ( double )mean ) * 100.0 : 0.0;
     r.checksum = checksum_img( buffer, ( size_t )WIDTH * HEIGHT );
     r.avg_ms = ticks_to_ms( r.avg_ticks );
     r.best_ms = ticks_to_ms( r.best_ticks );
 
-    printf( "%-10s avg: %8.3f ms | best: %8.3f ms | rms: %10.2f ticks | rel: %6.2f%% | checksum: %016llx\n",
-            mandelbrot_impl_name( impl ), r.avg_ms, r.best_ms, r.rms_ticks, r.rel_rms_percent,
+    printf( "%-10s avg: %8.3f ms | rms: %10.2f ticks | rel: %6.2f%% | checksum: %016llx\n",
+            mandelbrot_impl_name( impl ), r.avg_ms, r.rms_ticks, r.rel_rms_percent,
             ( unsigned long long )r.checksum );
 
     return r;
