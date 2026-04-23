@@ -72,7 +72,7 @@ static unsigned int xcrc32( const unsigned char *buf, size_t len,
     return crc;
 }
 
-static size_t StringHashCRC32First( StringKey key, size_t capacity ) {
+static size_t StringHashCRC32( StringKey key, size_t capacity ) {
     unsigned int crc =
         xcrc32( ( const unsigned char * )key.data, key.len, 0xffffffffU );
     return ( size_t )( crc % capacity );
@@ -181,7 +181,7 @@ static int ChainingRehash( HashTableChaining *table, size_t new_capacity ) {
         ChainNode *node = table->buckets[bucket_index];
         while ( node ) {
             ChainNode *next_node = node->next;
-            size_t new_index = StringHashCRC32First( node->key, new_capacity );
+            size_t new_index = StringHashCRC32( node->key, new_capacity );
             node->next = new_buckets[new_index];
             new_buckets[new_index] = node;
             node = next_node;
@@ -250,7 +250,7 @@ int HashTableChainingInsert( HashTableChaining *table, StringKey key ) {
         }
     }
 
-    size_t bucket_index = StringHashCRC32First( key, table->capacity );
+    size_t bucket_index = StringHashCRC32( key, table->capacity );
     ChainNode *node = ChainNodeCreate( key, table->buckets[bucket_index] );
     if ( !node ) {
         return 0;
@@ -265,7 +265,7 @@ int HashTableChainingContains( const HashTableChaining *table, StringKey key ) {
     assert( table && "Null pointer to table" );
     assert( key.data && "Null pointer to key data" );
 
-    size_t bucket_index = StringHashCRC32First( key, table->capacity );
+    size_t bucket_index = StringHashCRC32( key, table->capacity );
     ChainNode *node = table->buckets[bucket_index];
     while ( node ) {
         if ( StringKeyEquals( node->key, key ) ) {
@@ -281,7 +281,7 @@ int HashTableChainingErase( HashTableChaining *table, StringKey key ) {
     assert( table && "Null pointer to table" );
     assert( key.data && "Null pointer to key data" );
 
-    size_t bucket_index = StringHashCRC32First( key, table->capacity );
+    size_t bucket_index = StringHashCRC32( key, table->capacity );
     ChainNode *node = table->buckets[bucket_index];
     ChainNode *prev = NULL;
 
