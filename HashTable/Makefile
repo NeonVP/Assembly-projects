@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -O3 -Iinc -g -march=native
+CFLAGS = -Wall -Wextra -O3 -Iinc -g -march=native -masm=intel -mavx2
 
 SRC_FILES = $(wildcard src/HashTableV*.c)
 BINS = $(patsubst src/HashTable%.c, hash_%, $(SRC_FILES))

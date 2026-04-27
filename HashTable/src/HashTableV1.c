@@ -20,7 +20,7 @@ typedef struct Bucket {
 static size_t StringHashCRC32( StringKey key, size_t capacity ) {
     uint64_t crc = 0xFFFFFFFF;
     const uint8_t *buf = ( const uint8_t * )key.data;
-    size_t len = key.len;
+    size_t len = strlen( key.data );
 
     while ( len >= 8 ) {
         crc = _mm_crc32_u64( crc, *( const uint64_t* )buf );
@@ -39,27 +39,29 @@ static size_t StringHashCRC32( StringKey key, size_t capacity ) {
 }
 
 static int StringKeyEquals( StringKey lhs, StringKey rhs ) {
-    if ( lhs.len != rhs.len ) {
+    if ( strlen( lhs.data ) != strlen( rhs.data ) ) {
         return 0;
     }
 
-    if ( lhs.len == 0 ) {
+    if ( strlen (lhs.data ) == 0 ) {
         return 1;
     }
 
-    return memcmp( lhs.data, rhs.data, lhs.len ) == 0;
+    return memcmp( lhs.data, rhs.data, strlen( lhs.data )  ) == 0;
 }
 
 static char *StringKeyDuplicate( StringKey key ) {
-    char *copy = ( char * )malloc( key.len + 1 );
+    char *copy = ( char * )malloc( MAX_LINE_LENGTH );
     if ( !copy ) {
         return NULL;
     }
 
-    if ( key.len > 0 ) {
-        memcpy( copy, key.data, key.len );
+    int len = strlen( key.data );
+
+    if ( len > 0 ) {
+        memcpy( copy, key.data, len );
     }
-    copy[key.len] = '\0';
+    copy[len] = '\0';
     return copy;
 }
 
@@ -112,7 +114,6 @@ static ChainNode *ChainNodeCreate( StringKey key, ChainNode *next ) {
     }
 
     node->key.data = key_copy;
-    node->key.len = key.len;
     node->next = next;
     return node;
 }

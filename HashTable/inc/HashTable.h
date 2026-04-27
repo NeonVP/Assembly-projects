@@ -3,16 +3,13 @@
 
 #include <stddef.h>
 
+#define MAX_LINE_LENGTH 32
+
 typedef struct StringKey {
     const char *data;
-    size_t len;
 } StringKey;
 
 typedef struct HashTableChaining HashTableChaining;
-typedef struct HashTableLinear HashTableLinear;
-typedef struct HashTableQuadratic HashTableQuadratic;
-typedef struct HashTableDouble HashTableDouble;
-typedef struct HashTableCuckoo HashTableCuckoo;
 
 size_t HashTableCapacityForLoadFactor( size_t element_count,
                                        double target_load_factor );

@@ -9,7 +9,6 @@
 
 #include "HashTable.h"
 
-#define MAX_LINE_LENGTH 256
 #define TARGET_LOAD_FACTOR 10.0
 #define NUM_SEARCHES 5000000
 #define NUM_RUNS 5
@@ -60,18 +59,16 @@ TestContext *TestContextCreate( int words_count, int queries_count, double load_
 void TestContextLoadData( TestContext *ctx ) {
     char buffer[MAX_LINE_LENGTH] = {};
     for ( int i = 0; i < ctx->inserted_count; i++ ) {
-        if ( scanf( "%255s", buffer ) != 1 ) {
+        if ( scanf( "%31s", buffer ) != 1 ) {
             break;
         }
 
-        size_t len = strlen( buffer );
-        char *str_copy = ( char * )calloc( len + 1, sizeof( char ) );
+        char *str_copy = ( char * )calloc( MAX_LINE_LENGTH, sizeof( char ) );
         assert( str_copy && "Failed to allocate string copy" );
         
         strcpy( str_copy, buffer );
 
         ctx->inserted_words[i].data = str_copy;
-        ctx->inserted_words[i].len = len;
 
         HashTableChainingInsert( ctx->table, ctx->inserted_words[i] );
     }
@@ -87,15 +84,22 @@ void TestContextGenerateQueries( TestContext *ctx ) {
         if ( i % 2 == 0 ) {
             ctx->queries[i] = base_word;
         } else {
-            char *bad_word = ( char * )calloc( base_word.len + 2, sizeof( char ) );
+            size_t len = strlen( base_word.data );
+
+            char *bad_word = ( char * )calloc( MAX_LINE_LENGTH, sizeof( char ) );
             assert( bad_word && "Failed to allocate bad word" );
 
             strcpy( bad_word, base_word.data );
-            bad_word[base_word.len] = 'Z'; 
-            bad_word[base_word.len + 1] = '\0';
-            
+
+            if ( len < MAX_LINE_LENGTH - 1 ) {
+                bad_word[len] = 'Z'; 
+                bad_word[len + 1] = '\0';
+            } else {
+                bad_word[MAX_LINE_LENGTH - 2] = 'Z';
+                bad_word[MAX_LINE_LENGTH - 1] = '\0';
+            }
+
             ctx->queries[i].data = bad_word;
-            ctx->queries[i].len = base_word.len + 1;
         }
     }
 }
