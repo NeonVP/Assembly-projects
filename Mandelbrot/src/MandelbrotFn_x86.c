@@ -378,14 +378,14 @@ static void mandelbrot_v3_x86_avx512( unsigned char *img,
     }
 }
 
-static uint64_t mandelbrot_v1_bench( unsigned char *img,
-                                     int width,
-                                     int height,
-                                     int max_iter,
-                                     float xmin,
-                                     float xmax,
-                                     float ymin,
-                                     float ymax ) {
+uint64_t mandelbrot_bench_v1_mem( unsigned char *img,
+                                  int width,
+                                  int height,
+                                  int max_iter,
+                                  float xmin,
+                                  float xmax,
+                                  float ymin,
+                                  float ymax ) {
     uint64_t checksum = 0;
     float dx = ( xmax - xmin ) / width;
     float dy = ( ymax - ymin ) / height;
@@ -418,14 +418,54 @@ static uint64_t mandelbrot_v1_bench( unsigned char *img,
     return checksum;
 }
 
-static uint64_t mandelbrot_v2_bench( unsigned char *img,
-                                     int width,
-                                     int height,
-                                     int max_iter,
-                                     float xmin,
-                                     float xmax,
-                                     float ymin,
-                                     float ymax ) {
+uint64_t mandelbrot_bench_v1_var( unsigned char *img,
+                                  int width,
+                                  int height,
+                                  int max_iter,
+                                  float xmin,
+                                  float xmax,
+                                  float ymin,
+                                  float ymax ) {
+    ( void )img;
+
+    uint64_t checksum = 0;
+    float dx = ( xmax - xmin ) / width;
+    float dy = ( ymax - ymin ) / height;
+
+    for ( int y = 0; y < height; y++ ) {
+        float cy = ymin + y * dy;
+
+        for ( int x = 0; x < width; x++ ) {
+            float cx = xmin + x * dx;
+            float zx = 0.0f;
+            float zy = 0.0f;
+            int iter = 0;
+
+            while ( ( zx * zx + zy * zy <= L_MAX ) && ( iter < max_iter ) ) {
+                float zx2 = zx * zx;
+                float zy2 = zy * zy;
+                float zxy = zx * zy;
+
+                zy = 2.0f * zxy + cy;
+                zx = zx2 - zy2 + cx;
+                iter++;
+            }
+
+            checksum += ( unsigned char )( iter >= max_iter ? 255 : iter );
+        }
+    }
+
+    return checksum;
+}
+
+uint64_t mandelbrot_bench_v2_var( unsigned char *img,
+                                  int width,
+                                  int height,
+                                  int max_iter,
+                                  float xmin,
+                                  float xmax,
+                                  float ymin,
+                                  float ymax ) {
     ( void )img;
 
     uint64_t checksum = 0;
@@ -508,14 +548,14 @@ static uint64_t mandelbrot_v2_bench( unsigned char *img,
     return checksum;
 }
 
-static uint64_t mandelbrot_v3_x86_bench( unsigned char *img,
-                                         int width,
-                                         int height,
-                                         int max_iter,
-                                         float xmin,
-                                         float xmax,
-                                         float ymin,
-                                         float ymax ) {
+uint64_t mandelbrot_bench_v3_x86_var( unsigned char *img,
+                                      int width,
+                                      int height,
+                                      int max_iter,
+                                      float xmin,
+                                      float xmax,
+                                      float ymin,
+                                      float ymax ) {
     ( void )img;
 
     uint64_t checksum = 0;
@@ -589,14 +629,14 @@ static uint64_t mandelbrot_v3_x86_bench( unsigned char *img,
     return checksum;
 }
 
-static uint64_t mandelbrot_v3_x86_avx512_bench( unsigned char *img,
-                                                int width,
-                                                int height,
-                                                int max_iter,
-                                                float xmin,
-                                                float xmax,
-                                                float ymin,
-                                                float ymax ) {
+uint64_t mandelbrot_bench_v3_x86_avx512_var( unsigned char *img,
+                                             int width,
+                                             int height,
+                                             int max_iter,
+                                             float xmin,
+                                             float xmax,
+                                             float ymin,
+                                             float ymax ) {
     ( void )img;
 
     uint64_t checksum = 0;
@@ -722,13 +762,13 @@ uint64_t mandelbrot_bench_compute( unsigned char *img, int width, int height,
                                    MandelbrotImpl impl ) {
     switch ( impl ) {
     case MANDEL_IMPL_V1:
-        return mandelbrot_v1_bench( img, width, height, max_iter, xmin, xmax, ymin, ymax );
+        return mandelbrot_bench_v1_mem( img, width, height, max_iter, xmin, xmax, ymin, ymax );
     case MANDEL_IMPL_V2:
-        return mandelbrot_v2_bench( img, width, height, max_iter, xmin, xmax, ymin, ymax );
+        return mandelbrot_bench_v2_var( img, width, height, max_iter, xmin, xmax, ymin, ymax );
     case MANDEL_IMPL_V3_X86:
-        return mandelbrot_v3_x86_bench( img, width, height, max_iter, xmin, xmax, ymin, ymax );
+        return mandelbrot_bench_v3_x86_var( img, width, height, max_iter, xmin, xmax, ymin, ymax );
     case MANDEL_IMPL_V3_X86_AVX512:
-        return mandelbrot_v3_x86_avx512_bench( img, width, height, max_iter, xmin, xmax, ymin, ymax );
+        return mandelbrot_bench_v3_x86_avx512_var( img, width, height, max_iter, xmin, xmax, ymin, ymax );
     default:
         mandelbrot_compute( img, width, height, max_iter, xmin, xmax, ymin, ymax, impl );
         return 0;

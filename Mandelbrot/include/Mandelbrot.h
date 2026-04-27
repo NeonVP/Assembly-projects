@@ -27,4 +27,25 @@ uint64_t mandelbrot_bench_compute( unsigned char *img, int width, int height,
                                    float ymin, float ymax,
                                    MandelbrotImpl impl );
 
+uint64_t mandelbrot_bench_v1_mem( unsigned char *img, int width, int height,
+                                  int max_iter,
+                                  float xmin, float xmax,
+                                  float ymin, float ymax );
+uint64_t mandelbrot_bench_v1_var( unsigned char *img, int width, int height,
+                                  int max_iter,
+                                  float xmin, float xmax,
+                                  float ymin, float ymax );
+uint64_t mandelbrot_bench_v2_var( unsigned char *img, int width, int height,
+                                  int max_iter,
+                                  float xmin, float xmax,
+                                  float ymin, float ymax );
+uint64_t mandelbrot_bench_v3_x86_var( unsigned char *img, int width, int height,
+                                      int max_iter,
+                                      float xmin, float xmax,
+                                      float ymin, float ymax );
+uint64_t mandelbrot_bench_v3_x86_avx512_var( unsigned char *img, int width, int height,
+                                             int max_iter,
+                                             float xmin, float xmax,
+                                             float ymin, float ymax );
+
 #endif
