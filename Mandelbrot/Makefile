@@ -101,11 +101,11 @@ $(BENCH_X86_BIN): $(OBJ_DIR)/MandelbrotBench_x86.o $(OBJ_DIR)/MandelbrotFn_x86.o
 	$(CC) $^ -lm -lpthread -o $@
 
 bench_x86: $(BENCH_X86_BIN)
-	./$(BENCH_X86_BIN) $(BENCH_RUNS) $(BENCH_WARMUP)
+	sudo nice -n -20 taskset -c 2 ./$(BENCH_X86_BIN) $(BENCH_RUNS) $(BENCH_WARMUP)
 
 benchcsv_x86: $(BENCH_X86_BIN)
 	@mkdir -p $(BENCH_CSV_DIR)
-	./$(BENCH_X86_BIN) $(BENCH_RUNS) $(BENCH_WARMUP) $(BENCH_CSV_DIR)/bench_$$(date +%Y%m%d_%H%M%S)_x86.csv
+	sudo nice -n -20 ./$(BENCH_X86_BIN) $(BENCH_RUNS) $(BENCH_WARMUP) $(BENCH_CSV_DIR)/bench_$$(date +%Y%m%d_%H%M%S)_x86.csv
 else
 bench_x86:
 	@echo "bench_x86 requires an x86_64 host"

@@ -564,7 +564,7 @@ uint64_t mandelbrot_bench_v3_x86_var( unsigned char *img,
 
     __m256 radius = _mm256_set1_ps( L_MAX );
     __m256 two = _mm256_set1_ps( 2.0f );
-    __m256 one_ps = _mm256_castsi256_ps( _mm256_set1_epi32( 1 ) );
+    __m256 one_ps = _mm256_set1_ps( 1.0f );
     __m256 idx = _mm256_set_ps( 7.0f, 6.0f, 5.0f, 4.0f, 3.0f, 2.0f, 1.0f, 0.0f );
     __m256 dx_vec = _mm256_set1_ps( dx );
 
@@ -638,15 +638,14 @@ uint64_t mandelbrot_bench_v3_x86_avx512_var( unsigned char *img,
                                              float ymin,
                                              float ymax ) {
     ( void )img;
-
     uint64_t checksum = 0;
     float dx = ( xmax - xmin ) / width;
     float dy = ( ymax - ymin ) / height;
 
-    __m512 radius = _mm512_set1_ps( L_MAX );
-    __m512 two = _mm512_set1_ps( 2.0f );
-    __m512 one_ps = _mm512_set1_ps( 1.0f );
+    __m512 radius2_max = _mm512_set1_ps( L_MAX );
+    __m512i v_one = _mm512_set1_epi32( 1 ); 
     __m512 dx_vec = _mm512_set1_ps( dx );
+    
     __m512 idx = _mm512_set_ps( 15.0f, 14.0f, 13.0f, 12.0f, 11.0f, 10.0f, 9.0f, 8.0f,
                                 7.0f,  6.0f,  5.0f,  4.0f,  3.0f,  2.0f,  1.0f, 0.0f );
 
@@ -658,52 +657,57 @@ uint64_t mandelbrot_bench_v3_x86_avx512_var( unsigned char *img,
         for ( ; x <= width - 16; x += 16 ) {
             float base_x = xmin + x * dx;
             __m512 cx = _mm512_add_ps( _mm512_set1_ps( base_x ), _mm512_mul_ps( idx, dx_vec ) );
+
             __m512 zx = _mm512_setzero_ps();
             __m512 zy = _mm512_setzero_ps();
-            __m512 iters = _mm512_setzero_ps();
+            __m512i iters = _mm512_setzero_si512();
 
             for ( int it = 0; it < max_iter; it++ ) {
                 __m512 zx2 = _mm512_mul_ps( zx, zx );
                 __m512 zy2 = _mm512_mul_ps( zy, zy );
-                __m512 radius2 = _mm512_add_ps( zx2, zy2 );
-                __mmask16 mask = _mm512_cmp_ps_mask( radius2, radius, _CMP_LE_OQ );
+                __m512 r2 = _mm512_add_ps( zx2, zy2 );
+                
+                // Проверка выхода за радиус
+                __mmask16 mask = _mm512_cmp_ps_mask( r2, radius2_max, _CMP_LE_OQ );
 
-                if ( mask == 0 )
-                    break;
+                if ( mask == 0 ) break;
 
                 __m512 zxy = _mm512_mul_ps( zx, zy );
+                
+                // Стандартный расчет математики (как в твоей C++ версии)
                 __m512 nx = _mm512_add_ps( _mm512_sub_ps( zx2, zy2 ), cx );
-                __m512 ny = _mm512_add_ps( _mm512_mul_ps( two, zxy ), cy );
+                // 2 * x * y заменяем на (xy + xy), чтобы не тратить такты на _mm512_mul_ps
+                __m512 ny = _mm512_add_ps( _mm512_add_ps( zxy, zxy ), cy );
 
+                // Обновляем значения только по маске
                 zx = _mm512_mask_blend_ps( mask, zx, nx );
                 zy = _mm512_mask_blend_ps( mask, zy, ny );
-                iters = _mm512_mask_add_ps( iters, mask, iters, one_ps );
+                iters = _mm512_mask_add_epi32( iters, mask, iters, v_one );
             }
 
-            alignas( 64 ) float out_iters[16];
-            _mm512_store_ps( out_iters, iters );
+            alignas( 64 ) uint32_t out[16];
+            _mm512_store_si512( (__m512i*)out, iters );
 
             for ( int lane = 0; lane < 16; lane++ ) {
-                int iter = ( int )out_iters[lane];
-                checksum += ( unsigned char )( iter >= max_iter ? 255 : iter );
+                checksum += ( unsigned char )( out[lane] >= (uint32_t)max_iter ? 255 : out[lane] );
             }
         }
 
+        // Хвостовой цикл для оставшихся пикселей (если ширина не кратна 16)
         for ( ; x < width; x++ ) {
-            float cx = xmin + x * dx;
-            float zx = 0.0f;
-            float zy = 0.0f;
+            float cx_scalar = xmin + x * dx;
+            float zx_scalar = 0.0f;
+            float zy_scalar = 0.0f;
             int iter = 0;
 
-            while ( ( zx * zx + zy * zy <= L_MAX ) && ( iter < max_iter ) ) {
-                float zx2 = zx * zx;
-                float zy2 = zy * zy;
-                float zxy = zx * zy;
-                zy = 2.0f * zxy + cy_scalar;
-                zx = zx2 - zy2 + cx;
+            while ( ( zx_scalar * zx_scalar + zy_scalar * zy_scalar <= L_MAX ) && ( iter < max_iter ) ) {
+                float zx2 = zx_scalar * zx_scalar;
+                float zy2 = zy_scalar * zy_scalar;
+                float zxy = zx_scalar * zy_scalar;
+                zy_scalar = 2.0f * zxy + cy_scalar;
+                zx_scalar = zx2 - zy2 + cx_scalar;
                 iter++;
             }
-
             checksum += ( unsigned char )( iter >= max_iter ? 255 : iter );
         }
     }
