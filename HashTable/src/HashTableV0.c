@@ -1,20 +1,8 @@
-#include <assert.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-
 #include "HashTable.h"
 
-typedef enum BucketState {
-    BUCKET_EMPTY = 0,
-    BUCKET_OCCUPIED = 1,
-    BUCKET_DELETED = 2
-} BucketState;
-
-typedef struct Bucket {
-    StringKey key;
-    BucketState state;
-} Bucket;
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
 
 static const unsigned int crc32_table[] = {
     0x00000000, 0x04c11db7, 0x09823b6e, 0x0d4326d9, 0x130476dc, 0x17c56b6b,
@@ -66,256 +54,64 @@ static unsigned int xcrc32( const unsigned char *buf, size_t len,
                             unsigned int init ) {
     unsigned int crc = init;
     while ( len-- ) {
-        crc = ( crc << 8 ) ^ crc32_table[( ( crc >> 24 ) ^ *buf ) & 255U];
+        crc = ( crc << 8 ) ^ crc32_table[( ( crc >> 24 ) ^ *buf ) & 255];
         ++buf;
     }
     return crc;
 }
 
-static size_t StringHashCRC32First( StringKey key, size_t capacity ) {
-    unsigned int crc =
-        xcrc32( ( const unsigned char * )key.data, key.len, 0xffffffffU );
+size_t HashCRC32( const char* str, size_t capacity ) {
+    unsigned int crc = xcrc32( ( const unsigned char * )str, strlen( str ), 0xffffffffU );
     return ( size_t )( crc % capacity );
 }
 
-static int StringKeyEquals( StringKey lhs, StringKey rhs ) {
-    if ( lhs.len != rhs.len ) {
-        return 0;
-    }
 
-    if ( lhs.len == 0 ) {
-        return 1;
-    }
+HashTable* HashTableCtor( size_t initial_capacity, double max_load_factor ) {
+    HashTable *table = ( HashTable* )malloc( sizeof( HashTable ) );
+    if ( !table ) return NULL;
 
-    return memcmp( lhs.data, rhs.data, lhs.len ) == 0;
-}
-
-static char *StringKeyDuplicate( StringKey key ) {
-    char *copy = ( char * )malloc( key.len + 1 );
-    if ( !copy ) {
-        return NULL;
-    }
-
-    if ( key.len > 0 ) {
-        memcpy( copy, key.data, key.len );
-    }
-    copy[key.len] = '\0';
-    return copy;
-}
-
-typedef struct ChainNode {
-    StringKey key;
-    struct ChainNode *next;
-} ChainNode;
-
-struct HashTableChaining {
-    ChainNode **buckets;
-    size_t capacity;
-    size_t size;
-    double max_load_factor;
-};
-
-size_t HashTableCapacityForLoadFactor( size_t element_count,
-                                       double target_load_factor ) {
-    assert( target_load_factor > 0.0 && "Invalid target_load_factor" );
-
-    if ( element_count == 0 ) {
-        return 1;
-    }
-
-    size_t capacity =
-        ( size_t )( ( double )element_count / target_load_factor );
-    if ( ( double )capacity * target_load_factor < ( double )element_count ) {
-        ++capacity;
-    }
-
-    return capacity > 0 ? capacity : 1;
-}
-
-static double ChainingLoadFactor( const HashTableChaining *table ) {
-    if ( table->capacity == 0 ) {
-        return 0.0;
-    }
-    return ( double )table->size / ( double )table->capacity;
-}
-
-static ChainNode *ChainNodeCreate( StringKey key, ChainNode *next ) {
-    ChainNode *node = ( ChainNode * )malloc( sizeof( *node ) );
-    if ( !node ) {
-        return NULL;
-    }
-
-    char *key_copy = StringKeyDuplicate( key );
-    if ( !key_copy ) {
-        free( node );
-        return NULL;
-    }
-
-    node->key.data = key_copy;
-    node->key.len = key.len;
-    node->next = next;
-    return node;
-}
-
-static void ChainFree( ChainNode *head ) {
-    while ( head ) {
-        ChainNode *next_node = head->next;
-        free( ( void * )head->key.data );
-        free( head );
-        head = next_node;
-    }
-}
-
-static int ChainingRehash( HashTableChaining *table, size_t new_capacity ) {
-    assert( table && "Null pointer to table" );
-    assert( new_capacity > 0 && "Invalid new_capacity" );
-
-    ChainNode **new_buckets =
-        ( ChainNode ** )calloc( new_capacity, sizeof( *new_buckets ) );
-    if ( !new_buckets ) {
-        return 0;
-    }
-
-    for ( size_t bucket_index = 0; bucket_index < table->capacity;
-          ++bucket_index ) {
-        ChainNode *node = table->buckets[bucket_index];
-        while ( node ) {
-            ChainNode *next_node = node->next;
-            size_t new_index = StringHashCRC32First( node->key, new_capacity );
-            node->next = new_buckets[new_index];
-            new_buckets[new_index] = node;
-            node = next_node;
-        }
-    }
-
-    free( table->buckets );
-    table->buckets = new_buckets;
-    table->capacity = new_capacity;
-    return 1;
-}
-
-HashTableChaining *HashTableChainingCtor( size_t initial_capacity,
-                                          double max_load_factor ) {
-    assert( initial_capacity > 0 && "Invalid initial_capacity" );
-    assert( max_load_factor > 0.0 && "Invalid max_load_factor" );
-
-    HashTableChaining *table =
-        ( HashTableChaining * )malloc( sizeof( *table ) );
-    if ( !table ) {
-        return NULL;
-    }
-
-    ChainNode **buckets =
-        ( ChainNode ** )calloc( initial_capacity, sizeof( *buckets ) );
-    if ( !buckets ) {
-        free( table );
-        return NULL;
-    }
-
-    table->buckets = buckets;
     table->capacity = initial_capacity;
-    table->size = 0;
     table->max_load_factor = max_load_factor;
+
+    table->buckets = ( int* )malloc( initial_capacity * sizeof( int ) );
+    for ( size_t i = 0; i < initial_capacity; i++ ) {
+        table->buckets[i] = CF_NULL_INDEX;
+    }
+
+    size_t pool_size = ( size_t )( initial_capacity * max_load_factor ) + 16;
+    table->list = CFListCtor( pool_size );
+
     return table;
 }
 
-void HashTableChainingDtor( HashTableChaining *table ) {
-    if ( !table ) {
-        return;
-    }
-
-    for ( size_t bucket_index = 0; bucket_index < table->capacity;
-          ++bucket_index ) {
-        ChainFree( table->buckets[bucket_index] );
-    }
-
+void HashTableDtor( HashTable *table ) {
+    if ( !table ) return;
+    CFListDtor( table->list );
     free( table->buckets );
     free( table );
 }
 
-int HashTableChainingInsert( HashTableChaining *table, StringKey key ) {
-    assert( table && "Null pointer to table" );
-    assert( key.data && "Null pointer to key data" );
+int HashTableInsert( HashTable *table, const char* key_data ) {    
+    size_t idx = HashCRC32( key_data, table->capacity );
 
-    if ( HashTableChainingContains( table, key ) ) {
-        return 1;
-    }
+    int new_node_idx = CFListAllocateNode( table->list, key_data, table->buckets[idx] );
+    if ( new_node_idx == CF_NULL_INDEX ) return 0;
 
-    double load_factor = ChainingLoadFactor( table );
-    if ( load_factor >= table->max_load_factor ) {
-        size_t new_capacity = table->capacity * 2 + 1;
-        int rehashed = ChainingRehash( table, new_capacity );
-        if ( !rehashed ) {
-            return 0;
-        }
-    }
-
-    size_t bucket_index = StringHashCRC32First( key, table->capacity );
-    ChainNode *node = ChainNodeCreate( key, table->buckets[bucket_index] );
-    if ( !node ) {
-        return 0;
-    }
-
-    table->buckets[bucket_index] = node;
-    table->size++;
+    table->buckets[idx] = new_node_idx;
     return 1;
 }
 
-int HashTableChainingContains( const HashTableChaining *table, StringKey key ) {
-    assert( table && "Null pointer to table" );
-    assert( key.data && "Null pointer to key data" );
+int HashTableContains( const HashTable *table, const char* key_data ) {
+    size_t idx = HashCRC32( key_data, table->capacity );
 
-    size_t bucket_index = StringHashCRC32First( key, table->capacity );
-    ChainNode *node = table->buckets[bucket_index];
-    while ( node ) {
-        if ( StringKeyEquals( node->key, key ) ) {
+    int current_node_idx = table->buckets[idx];
+    while ( current_node_idx != CF_NULL_INDEX ) {
+        CFNode *node = CFListGetNode( table->list, current_node_idx );
+        
+        if ( memcmp( node->key_data, key_data, MAX_LINE_LENGTH ) == 0 ) {
             return 1;
         }
-        node = node->next;
+        current_node_idx = node->next;
     }
-
     return 0;
-}
-
-int HashTableChainingErase( HashTableChaining *table, StringKey key ) {
-    assert( table && "Null pointer to table" );
-    assert( key.data && "Null pointer to key data" );
-
-    size_t bucket_index = StringHashCRC32First( key, table->capacity );
-    ChainNode *node = table->buckets[bucket_index];
-    ChainNode *prev = NULL;
-
-    while ( node ) {
-        if ( StringKeyEquals( node->key, key ) ) {
-            if ( prev ) {
-                prev->next = node->next;
-            } else {
-                table->buckets[bucket_index] = node->next;
-            }
-            free( ( void * )node->key.data );
-            free( node );
-            table->size--;
-            return 1;
-        }
-
-        prev = node;
-        node = node->next;
-    }
-
-    return 0;
-}
-
-size_t HashTableChainingSize( const HashTableChaining *table ) {
-    assert( table && "Null pointer to table" );
-    return table->size;
-}
-
-size_t HashTableChainingCapacity( const HashTableChaining *table ) {
-    assert( table && "Null pointer to table" );
-    return table->capacity;
-}
-
-double HashTableChainingLoadFactor( const HashTableChaining *table ) {
-    assert( table && "Null pointer to table" );
-    return ChainingLoadFactor( table );
 }

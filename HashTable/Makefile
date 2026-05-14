@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -O3 -Iinc -g -march=native -masm=intel -mavx2
+CFLAGS = -Wall -Wextra -O3 -Iinc -g -march=haswell -masm=intel -mavx2
 
 COMMON_SRC = src/Benchmark.c src/CFList.c
 
@@ -15,29 +15,37 @@ HASH_V1 ?= crc32intrin
 HASH_V2 ?= crc32intrin
 HASH_V3 ?= crc32intrin
 
-.PHONY: all clean run_% perf_%
+.PHONY: all clean run_% perf_% callgrind_%
 
 all: $(BINS)
 
-hash_V3: src/main.c src/HashTableV3.c src/contains.s $(COMMON_SRC)
+hash_V2: src/main.c src/HashTableV2.c src/my_strlen.s $(COMMON_SRC)
+	$(CC) $(CFLAGS) $^ -o $@
+
+hash_V3: src/main.c src/HashTableV3.c src/my_strlen.s src/contains.s $(COMMON_SRC)
 	$(CC) $(CFLAGS) $^ -o $@
 
 hash_%: src/main.c src/HashTable%.c $(COMMON_SRC)
 	$(CC) $(CFLAGS) $^ -o $@
 
-CURRENT_HASH = $(if $(HASH_$*),$(HASH_$*),crc32)
-
 run_%: hash_% 
 	@echo "\n========================================"
 	@echo " Запуск $* без Perf "
 	@echo "========================================"
-	./$< -s $(SEARCHES) -r $(RUNS) -w $(WARMUPS) < data.txt
+	sudo nice -n -20 taskset -c 3 ./$< -s $(SEARCHES) -r $(RUNS) -w $(WARMUPS) < data.txt
 
 perf_%: hash_%
 	@echo "\n========================================"
 	@echo " Запуск $* с Perf "
 	@echo "========================================"
 	sudo perf record -g nice -n -20 taskset -c 3 ./$< -s $(SEARCHES) -r $(RUNS) -w $(WARMUPS) < data.txt
+
+callgrind_%: hash_%
+	@echo "\n========================================"
+	@echo " Профилирование $* через Callgrind "
+	@echo "========================================"
+	valgrind --tool=callgrind --callgrind-out-file=callgrind_$*.out --dump-instr=yes --collect-jumps=yes ./$< -s 75000000 -r 1 -w 5000 < data.txt
+	kcachegrind callgrind_$*.out
 
 clean:
 	rm -f hash_* perf.data*

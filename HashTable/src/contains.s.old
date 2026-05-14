@@ -1,0 +1,62 @@
+.global HashTableChainingContains
+.intel_syntax noprefix
+
+.text
+# int HashTableChainingContains(const HashTableChaining *table, const char* key_data);
+# rdi = table
+# rsi = key_data (указатель на 32-байтный буфер)
+
+HashTableChainingContains:
+    # --- 1. АППАРАТНЫЙ ХЭШ БЕЗ ЦИКЛОВ (СТРОГО CRC32) ---
+    mov rcx, 0xFFFFFFFF
+    crc32 rcx, QWORD PTR [rsi]
+    crc32 rcx, QWORD PTR [rsi + 8]
+    crc32 rcx, QWORD PTR [rsi + 16]
+    crc32 rcx, QWORD PTR [rsi + 24]
+
+    # --- 2. HASH % CAPACITY ---
+    mov rax, rcx           
+    xor rdx, rdx           
+    mov r8, [rdi + 16]     # Читаем table->capacity (смещение 16 байт в HashTableChaining)
+    div r8                 # В rdx теперь остаток (bucket_index)
+
+    # --- 3. ПОДГОТОВКА К ОБХОДУ СКОРОСТНОГО МАССИВА (CFList) ---
+    mov r9, [rdi + 0]      # r9 = table->buckets (массив int)
+    movsxd r8, DWORD PTR [r9 + rdx*4] # r8 = индекс головы списка (первый узел)
+
+    mov r11, [rdi + 8]     # r11 = table->list
+    mov r10, [r11 + 0]     # r10 = table->list->nodes (физический указатель на массив узлов)
+
+    vmovdqu ymm1, YMMWORD PTR [rsi]   # Загружаем искомое слово 1 раз до цикла!
+
+.L_search_loop:
+    cmp r8d, -1            # Проверка: node_idx == CF_NULL_INDEX ?
+    je .L_not_found
+
+    # Вычисляем физический адрес узла: node_addr = nodes + (index * 36)
+    # (sizeof(CFNode) = 36 байт)
+    imul rax, r8, 36       
+    lea rcx, [r10 + rax]   # rcx = адрес текущего узла CFNode
+
+    # --- 4. СЛЕПОЕ ВЕКТОРНОЕ СРАВНЕНИЕ (AVX2) ---
+    # Поле key_data лежит по смещению 0 внутри CFNode
+    vmovdqu ymm0, YMMWORD PTR [rcx] 
+    vpcmpeqb ymm0, ymm0, ymm1
+    vpmovmskb eax, ymm0
+    
+    cmp eax, -1            # Все 32 байта совпали?
+    je .L_found
+
+    # Читаем следующий индекс: node->next (смещение 32 байта внутри CFNode)
+    movsxd r8, DWORD PTR [rcx + 32] 
+    jmp .L_search_loop
+
+.L_found:
+    mov eax, 1             # Возвращаем 1
+    vzeroupper             
+    ret
+
+.L_not_found:
+    xor eax, eax           # Возвращаем 0
+    vzeroupper
+    ret

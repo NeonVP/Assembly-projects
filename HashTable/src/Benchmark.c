@@ -57,13 +57,55 @@ TestContext *TestContextCreate( int words_count, int queries_count, double load_
 }
 
 void TestContextLoadData( TestContext *ctx ) {
-    char buffer[MAX_LINE_LENGTH] = {};
-    for ( int i = 0; i < ctx->inserted_count; i++ ) {
-        if ( scanf( "%31s", buffer ) != 1 ) break;
+    size_t buf_cap = 1024 * 1024 * 16; 
+    char *file_buffer = ( char * )malloc( buf_cap );
+    if ( !file_buffer ) {
+        fprintf( stderr, "Failed to allocate memory for file buffer\n" );
+        return;
+    }
 
-        memcpy( ctx->inserted_words[i], buffer, MAX_LINE_LENGTH );
+    size_t total_read = 0;
+    size_t bytes_read = 0;
+    
+    while ( ( bytes_read = fread( file_buffer + total_read, 1, 65536, stdin ) ) > 0 ) {
+        total_read += bytes_read;
+        if ( total_read + 65536 > buf_cap ) {
+            buf_cap *= 2;
+            file_buffer = ( char * )realloc( file_buffer, buf_cap );
+            if ( !file_buffer ) {
+                fprintf( stderr, "Failed to reallocate memory for file buffer\n" );
+                return;
+            }
+        }
+    }
+    file_buffer[total_read] = '\0'; 
+
+    char *ptr = file_buffer;
+    for ( int i = 0; i < ctx->inserted_count; i++ ) {
+        
+        while ( *ptr == ' ' || *ptr == '\n' || *ptr == '\r' || *ptr == '\t' ) {
+            ptr++;
+        }
+        
+        if ( *ptr == '\0' ) break; 
+
+        char *word_start = ptr;
+        int len = 0;
+        
+        while ( *ptr != ' ' && *ptr != '\n' && *ptr != '\r' && *ptr != '\t' && *ptr != '\0' ) {
+            if ( len < MAX_LINE_LENGTH - 1 ) { 
+                len++;
+            }
+            ptr++;
+        }
+
+        memcpy( ctx->inserted_words[i], word_start, len );
+        ctx->inserted_words[i][len] = '\0'; 
+
         HashTableInsert( ctx->table, ctx->inserted_words[i] );
     }
+
+    free( file_buffer );
 }
 
 void TestContextGenerateQueries( TestContext *ctx ) {
