@@ -5,9 +5,6 @@
 # int HashTableContains(const HashTable *table [rdi], const char *key_data [rsi])
 # -----------------------------------------------------------------------------
 HashTableContains:
-    # ---------------------------------------------------------
-    # 1. Аппаратное вычисление CRC32 (inlined HashCRC32)
-    # ---------------------------------------------------------
     mov eax, 0xFFFFFFFF                  # uint64_t crc = 0xFFFFFFFF
     crc32 rax, qword ptr [rsi]           # crc = _mm_crc32_u64(crc, buf[0])
     crc32 rax, qword ptr [rsi + 8]       # crc = _mm_crc32_u64(crc, buf[1])
@@ -15,58 +12,58 @@ HashTableContains:
     crc32 rax, qword ptr [rsi + 24]      # crc = _mm_crc32_u64(crc, buf[3])
 
     # ---------------------------------------------------------
-    # 2. Вычисляем индекс корзины (idx = crc % capacity)
-    # table->capacity лежит по смещению 16 байт
+    # idx = crc % capacity
+    # смещение table->capacity - 16 байт
     # ---------------------------------------------------------
-    xor edx, edx                         # rdx = 0 (подготавливаем для деления rdx:rax)
-    div qword ptr [rdi + 16]             # Делим rax на table->capacity. Остаток будет в rdx
+    xor edx, edx                         
+    div qword ptr [rdi + 16]             # деление rax на table->capacity, остаток в rdx
 
     # ---------------------------------------------------------
-    # 3. Достаем первый индекс узла из buckets
-    # table->buckets лежит по смещению 0 байт
+    # Получение первого индекса узла из buckets
+    # Смещение table->buckets - 0 байт
     # ---------------------------------------------------------
     mov rcx, [rdi]                       # rcx = table->buckets
     mov eax, [rcx + rdx * 4]             # eax = current_node_idx (int, 4 байта)
 
     # ---------------------------------------------------------
-    # 4. Подготовка к циклу поиска
+    # Перед поиском
     # ---------------------------------------------------------
     mov rcx, [rdi + 8]                   # rcx = table->list
-    mov r8,  [rcx]                       # r8  = table->list->nodes (массив узлов)
+    mov r8,  [rcx]                       # r8  = table->list->nodes
     
-    vmovdqu ymm0, [rsi]                  # Загружаем искомое слово key_data в ymm0 один раз!
+    vmovdqu ymm0, [rsi]
 
 .loop:
-    cmp eax, -1                          # Проверяем current_node_idx == CF_NULL_INDEX
-    je .not_found                        # Если -1, дошли до конца цепочки, слова нет
+    cmp eax, -1                          # ? current_node_idx == CF_NULL_INDEX
+    je .not_found                        # если -1, то слова нет
 
     # ---------------------------------------------------------
-    # 5. Вычисляем адрес текущего узла: &list->nodes[current_node_idx]
+    # Адрес текущего узла: &list->nodes[current_node_idx]
     # ---------------------------------------------------------
-    movsxd r9, eax                       # Расширяем индекс до 64 бит
-    imul r9, r9, 36                      # Умножаем на размер структуры CFNode (36 байт)
-                                         # ВНИМАНИЕ: Если добавили выравнивание до 64, поменяйте 36 на 64!
-    lea r10, [r8 + r9]                   # r10 = точный адрес текущего CFNode
+    movsxd r9, eax                       # расширил индекс до 64 бит
+    imul r9, r9, 36                      # умножил на размер структуры CFNode (36 байт)
+                                         
+    lea r10, [r8 + r9]                   # r10 = адрес текущего CFNode
 
     # ---------------------------------------------------------
-    # 6. Сравнение строк через AVX2 (StringEquals)
+    # Сравнение строк через AVX2 (StringEquals)
+    # Смещение node->key_data - 0 байт
     # ---------------------------------------------------------
-    # node->key_data лежит по смещению 0 внутри узла
-    vpcmpeqb ymm1, ymm0, [r10]           # Сравниваем искомое (ymm0) с текущим узлом в памяти
-    vpmovmskb r11d, ymm1                 # Собираем маску совпадений
-    cmp r11d, -1                         # -1 (0xFFFFFFFF) означает полное совпадение
-    je .found                            # Ура, нашли!
+    vpcmpeqb ymm1, ymm0, [r10]           # сравнил искомое (ymm0) с текущим узлом в памяти
+    vpmovmskb r11d, ymm1                 # собирал маску совпадений
+    cmp r11d, -1                         # проверка на совпадение
+    je .found                            # нашли
 
     # ---------------------------------------------------------
-    # 7. Переход к следующему узлу
-    # node->next лежит по смещению 32 байта (сразу после key_data)
+    # Переход к следующему узлу
+    # смещение node->next -  32 байта
     # ---------------------------------------------------------
     mov eax, [r10 + 32]                  # current_node_idx = node->next
-    jmp .loop                            # Идем на следующий круг
+    jmp .loop                            # цикл
 
 .found:
     mov eax, 1                           # return 1
-    vzeroupper                           # Очищаем верхнюю половину YMM для совместимости
+    vzeroupper                           # очистил верхнюю половину YMM для совместимости
     ret
 
 .not_found:

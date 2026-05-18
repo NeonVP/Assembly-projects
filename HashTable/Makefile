@@ -29,16 +29,10 @@ hash_%: src/main.c src/HashTable%.c $(COMMON_SRC)
 	$(CC) $(CFLAGS) $^ -o $@
 
 run_%: hash_% 
-	@echo "\n========================================"
-	@echo " Запуск $* без Perf "
+	@echo "========================================"
+	@echo " Запуск $* "
 	@echo "========================================"
 	sudo nice -n -20 taskset -c 3 ./$< -s $(SEARCHES) -r $(RUNS) -w $(WARMUPS) < data.txt
-
-perf_%: hash_%
-	@echo "\n========================================"
-	@echo " Запуск $* с Perf "
-	@echo "========================================"
-	sudo perf record -g nice -n -20 taskset -c 3 ./$< -s $(SEARCHES) -r $(RUNS) -w $(WARMUPS) < data.txt
 
 callgrind_%: hash_%
 	@echo "\n========================================"
